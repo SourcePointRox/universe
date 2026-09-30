@@ -1,0 +1,224 @@
+# =============================================================
+# 天文开放数据库注册表
+# 每条记录描述一个科研开放数据库：数据种类、格式、规模、
+# 本地扫描识别规则（文件名/头部关键字）、远程补全下载入口
+# =============================================================
+surveys:
+
+  - id: gaia
+    name: Gaia DR3/DR4
+    agency: ESA
+    home: https://gea.esac.esa.int/archive/
+    total_size: "DR3 ~10 TB; DR4 ~400-500 TB"
+    data_products:
+      - 天体测量(位置/视差/自行)
+      - 宽带测光(G/BP/RP)
+      - 视向速度与天体物理参数
+      - 变星/双星/太阳系小天体星表
+    formats: [csv, ecsv, vot, votable, fits, gz]
+    file_patterns: ["gaia*", "GaiaSource*", "*gaia_dr3*", "*gaiadr3*"]
+    header_keywords: ["GAIA", "Gaia"]
+    download:
+      bulk: https://gea.esac.esa.int/archive/
+      api: "ADQL/TAP: https://gea.esac.esa.int/tap-server/tap"
+    relevance: 极高 # 三维位置(视差)核心数据
+    compute_groups: [CG1, CG2]
+
+  - id: desi
+    name: DESI DR1
+    agency: LBNL/NOIRLab
+    home: https://data.desi.lbl.gov/
+    total_size: "DR1 ~270 TB"
+    data_products:
+      - 光谱(原始/处理后)
+      - 红移目录
+      - 大尺度结构目录 / QSO目录 / 价值增广目录
+    formats: [fits, csv, ecsv]
+    file_patterns: ["desi*", "zcatalog*", "*redrock*", "*zall*"]
+    header_keywords: ["DESI", "SPECTRO"]
+    download:
+      bulk: https://data.desi.lbl.gov/public/dr1/
+      api: "https://data.desi.lbl.gov/doc/"
+    relevance: 极高 # 最大规模3D红移图
+    compute_groups: [CG2]
+
+  - id: sdss
+    name: SDSS DR18/DR19
+    agency: SDSS Collaboration
+    home: https://www.sdss.org/
+    total_size: "累计 ~652 TB"
+    data_products:
+      - 光学成像与测光星表
+      - BOSS/eBOSS 光谱与红移
+      - APOGEE 恒星参数 / MaNGA IFS
+    formats: [fits, csv]
+    file_patterns: ["sdss*", "photoObj*", "spec-*", "*apogee*", "*manga*", "spAll*"]
+    header_keywords: ["SDSS", "BOSS", "APOGEE", "EBOSS"]
+    download:
+      bulk: https://data.sdss.org/sas/
+      api: "CASjobs / SkyServer: https://skyserver.sdss.org/"
+    relevance: 极高
+    compute_groups: [CG1, CG2]
+
+  - id: euclid
+    name: Euclid Q1+
+    agency: ESA/Euclid Consortium
+    home: https://www.euclid-ec.org/
+    total_size: "Q1 ~35 TB; 任务期 ~100 PB"
+    data_products:
+      - VIS/NISP 成像与MER拼接
+      - 测光红移目录(PHZ)
+      - 光谱红移目录(SPE)
+      - 弱引力透镜形状目录
+    formats: [fits]
+    file_patterns: ["euclid*", "*_mer_*", "*phz*", "*spe_*"]
+    header_keywords: ["EUCLID"]
+    download:
+      bulk: https://eas.esac.esa.int/sas/
+      api: "ESA Datalabs / Euclid SAS"
+    relevance: 高
+    compute_groups: [CG2, CG3]
+
+  - id: mast
+    name: STScI/MAST (HST/JWST/Kepler/GALEX...)
+    agency: NASA/STScI
+    home: https://archive.stsci.edu/
+    total_size: "~4 PB+"
+    data_products:
+      - HST/JWST 图像与光谱
+      - 高等级科学产品(HLSP)
+      - 星表与光变曲线
+    formats: [fits, vot, csv, json]
+    file_patterns: ["hlsp_*", "hst_*", "jwst*", "mast_*"]
+    header_keywords: ["HST", "JWST", "STScI", "TELESCOP"]
+    download:
+      bulk: https://archive.stsci.edu/
+      api: "astroquery.mast / MAST Portal API"
+    relevance: 高
+    compute_groups: [CG3, CG4]
+
+  - id: tess
+    name: TESS
+    agency: NASA/MIT (存档于MAST)
+    home: https://archive.stsci.edu/tess/
+    total_size: "FFI >251 TB"
+    data_products:
+      - Full Frame Images
+      - 目标像素文件与光变曲线
+      - 数据验证报告
+    formats: [fits]
+    file_patterns: ["tess*", "tglc*", "*-s0*_*_lc.fits"]
+    header_keywords: ["TESS"]
+    download:
+      bulk: https://archive.stsci.edu/tess/bulk_downloads/
+      api: "astroquery.mast"
+    relevance: 中低 # 宿主星定位与光变研究
+    compute_groups: [CG4]
+
+  - id: ligo
+    name: LIGO/Virgo/KAGRA (GWOSC)
+    agency: LVK Collaboration
+    home: https://gwosc.org/
+    total_size: "事件目录+应变数据(公开)"
+    data_products:
+      - GWTC 事件目录(质量/距离/天区定位)
+      - 引力波应变数据(GWF/HDF5)
+      - 参数估计后验样本
+    formats: [gwf, hdf5, h5, csv, json, txt]
+    file_patterns: ["*gw*", "GWTC*", "*_GWOSC_*", "PE_*"]
+    header_keywords: ["LIGO", "VIRGO", "KAGRA", "GWOSC"]
+    download:
+      bulk: https://gwosc.org/archive/
+      api: "GWOSC Event Portal / gwpy"
+    relevance: 中低 # 多信使宿主星系定位
+    compute_groups: [CG4]
+
+  - id: twomass
+    name: 2MASS
+    agency: NASA/IPAC
+    home: https://irsa.ipac.caltech.edu/Missions/2mass.html
+    total_size: "~24 TB"
+    data_products: [J/H/Ks 全天空点源与扩展源目录, 图像镶嵌]
+    formats: [fits, csv, tbl, gz]
+    file_patterns: ["2mass*", "psc_*", "xsc_*"]
+    header_keywords: ["2MASS"]
+    download:
+      bulk: https://irsa.ipac.caltech.edu/data/2MASS/
+      api: "IRSA TAP"
+    relevance: 中
+    compute_groups: [CG1]
+
+  - id: wise
+    name: WISE/AllWISE/unWISE
+    agency: NASA/IPAC
+    home: https://wise2.ipac.caltech.edu/
+    total_size: "~15.6 TB 目录; unWISE coadds ~175 TB"
+    data_products: [中红外源目录, Atlas Images, coadds]
+    formats: [fits, tbl, gz]
+    file_patterns: ["wise*", "allwise*", "unwise*"]
+    header_keywords: ["WISE"]
+    download:
+      bulk: https://irsa.ipac.caltech.edu/data/WISE/
+      api: "IRSA TAP"
+    relevance: 中
+    compute_groups: [CG1, CG2]
+
+  - id: panstarrs
+    name: Pan-STARRS PS1
+    agency: IfA
+    home: https://panstarrs.stsci.edu/
+    total_size: "DR2 ~1.6 PB"
+    data_products: [多色图像, 星表(grizy)]
+    formats: [fits, csv]
+    file_patterns: ["ps1*", "panstarrs*"]
+    header_keywords: ["PANSTARRS", "PS1"]
+    download:
+      bulk: https://panstarrs.stsci.edu/
+      api: "PS1 MAST API"
+    relevance: 中
+    compute_groups: [CG1, CG2]
+
+  - id: decals
+    name: DECaLS / DESI Legacy Surveys
+    agency: NOIRLab
+    home: https://www.legacysurvey.org/
+    total_size: "DR8 coadd ~45 TB"
+    data_products: [拼接图像, Tractor星表, 强制测光]
+    formats: [fits]
+    file_patterns: ["legacysurvey*", "decals*", "tractor-*", "ls_dr*"]
+    header_keywords: ["DECALS", "BASS", "MZLS"]
+    download:
+      bulk: https://portal.nersc.gov/cfs/cosmo/data/legacysurvey/
+      api: "https://www.legacysurvey.org/dr8/files/"
+    relevance: 高
+    compute_groups: [CG2]
+
+  - id: planck
+    name: Planck CMB
+    agency: ESA
+    home: https://pla.esac.esa.int/
+    total_size: "~32 TB"
+    data_products: [CMB温度/偏振全天空图, 成分分离图, 透镜重建图]
+    formats: [fits]
+    file_patterns: ["*planck*", "COM_*", "HFI_*", "LFI_*"]
+    header_keywords: ["PLANCK", "HFI", "LFI"]
+    download:
+      bulk: https://pla.esac.esa.int/
+      api: "IRSA Planck"
+    relevance: 中低 # 宇宙学先验与CMB透镜交叉
+    compute_groups: [CG3, CG5]
+
+  - id: millennium
+    name: Millennium/IllustrisTNG 模拟数据库
+    agency: Virgo Consortium / TNG
+    home: https://www.tng-project.org/
+    total_size: "TNG ~PB级(按需下载)"
+    data_products: [暗物质晕目录, 星系目录, 快照, 合并树]
+    formats: [hdf5, h5, csv]
+    file_patterns: ["tng*", "illustris*", "millennium*", "groups_*", "snapshot_*"]
+    header_keywords: ["TNG", "ILLUSTRIS"]
+    download:
+      bulk: https://www.tng-project.org/data/
+      api: "TNG API (需key)"
+    relevance: 高 # 模拟对比与半解析验证
+    compute_groups: [CG5]

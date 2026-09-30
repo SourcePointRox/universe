@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# 中间工作产物
+test_work/
+demo_out/
+work/
+results/
+logs/
+*.sqlite
+*.sqlite-journal
+
+# 工具缓存
+.pip-cache/
+.tmp/
+
+# 大型数据（不应入库）
+*.fits
+*.fits.gz
+*.h5
+*.hdf5
+*.gwf
+
+# OS
+Thumbs.db
+Desktop.ini

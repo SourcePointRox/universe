@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>宇宙三维建模 · 数据后处理平台</title>
+<style>
+  body { font-family: "Microsoft YaHei", sans-serif; margin: 24px; background:#0f1420; color:#e6e9f0; }
+  h1 { font-size: 22px; color:#7ab3ff; }
+  h2 { font-size: 16px; color:#9db8e0; margin-top:28px; }
+  .card { background:#171e30; border:1px solid #2a3550; border-radius:10px; padding:16px; margin:12px 0; }
+  button { background:#2b6cb0; color:#fff; border:none; border-radius:6px; padding:8px 16px; cursor:pointer; margin-right:8px; }
+  button:hover { background:#3182ce; }
+  table { border-collapse: collapse; font-size: 13px; }
+  td, th { border:1px solid #2a3550; padding:4px 10px; }
+  canvas { background:#0d1220; border-radius:8px; }
+  .legend span { display:inline-block; width:12px; height:12px; border-radius:3px; margin:0 4px 0 12px; vertical-align:middle;}
+  #msg { color:#8fd18a; white-space:pre-wrap; font-size:13px; }
+  img { max-width: 96%; border-radius:8px; margin:8px 0; background:#0d1220; }
+</style>
+</head>
+<body>
+<h1>数据后处理平台 · 宇宙三维建模分布式计算</h1>
+
+<div class="card">
+  <h2>1. 结果回收与校验</h2>
+  <button onclick="doCollect()">收集并校验结果</button>
+  <button onclick="loadStatus()">刷新状态</button>
+  <div id="status" style="margin-top:12px"></div>
+</div>
+
+<div class="card">
+  <h2>2. 科学归并与可视化</h2>
+  <button onclick="doMerge()">全局密度场 / 功率谱 / 两点相关函数 / 晕目录归并</button>
+  <button onclick="doViz()">生成科学可视化图像</button>
+  <div id="msg" style="margin-top:12px"></div>
+</div>
+
+<div class="card">
+  <h2>3. 各子组完成进度热力图</h2>
+  <div class="legend">
+    状态：<span style="background:#3a4560"></span>pending
+    <span style="background:#e6b93c"></span>running
+    <span style="background:#3fae5a"></span>done
+    <span style="background:#d05050"></span>error
+  </div>
+  <canvas id="heatmap" width="1100" height="420" style="margin-top:10px"></canvas>
+</div>
+
+<div class="card">
+  <h2>4. 可视化图像预览</h2>
+  <div id="plots"></div>
+</div>
+
+<script>
+const COLORS = {pending:"#3a4560", running:"#e6b93c", done:"#3fae5a", error:"#d05050"};
+
+async function loadStatus() {
+  const r = await (await fetch("/api/status")).json();
+  let html = `<table><tr><th>指标</th><th>值</th></tr>`;
+  html += `<tr><td>总任务数</td><td>${r.n_tasks}</td></tr>`;
+  html += `<tr><td>结果数</td><td>${r.n_results}</td></tr>`;
+  html += `<tr><td>已校验</td><td>${r.verified}</td></tr>`;
+  for (const [k,v] of Object.entries(r.counts)) html += `<tr><td>${k}</td><td>${v}</td></tr>`;
+  for (const [k,v] of Object.entries(r.metrics)) html += `<tr><td>${k}</td><td>${v}</td></tr>`;
+  html += `</table>`;
+  document.getElementById("status").innerHTML = html;
+}
+
+async function doCollect() {
+  const r = await (await fetch("/api/collect", {method:"POST"})).json();
+  document.getElementById("msg").textContent = r.ok ? `回收完成: ${JSON.stringify(r.stats)}` : `错误: ${r.error}`;
+  loadStatus(); drawHeatmap();
+}
+
+async function doMerge() {
+  const r = await (await fetch("/api/merge", {method:"POST"})).json();
+  document.getElementById("msg").textContent = `归并完成: \n${JSON.stringify(r.info,null,2)}`;
+}
+
+async function doViz() {
+  const r = await (await fetch("/api/visualize", {method:"POST"})).json();
+  if (!r.ok) { document.getElementById("msg").textContent = `错误: ${r.error}`; return; }
+  let h = `<p>图像已生成:</p>`;
+  for (const [k,p] of Object.entries(r.plots)) h += `<p><b>${k}</b></p><img src="${p.replace(/\\/g,'/')}?t=${Date.now()}" alt="${k}">`;
+  document.getElementById("plots").innerHTML = h;
+  document.getElementById("msg").textContent = `可视化完成: ${JSON.stringify(r.plots)}`;
+}
+
+async function drawHeatmap() {
+  const r = await (await fetch("/api/heatmap")).json();
+  const cv = document.getElementById("heatmap"), ctx = cv.getContext("2d");
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const sgs = r.subgroups, tiles = r.tiles;
+  if (!sgs.length) { ctx.fillStyle="#8899bb"; ctx.font="14px sans-serif"; ctx.fillText("尚无任务", 20, 30); return; }
+  const raBins = 36, decBins = 18;
+  const cw = Math.min(20, (cv.width-140)/raBins), ch = Math.min(18, (cv.height-60)/decBins);
+  ctx.font = "12px sans-serif";
+  sgs.forEach((sg, row) => {
+    const y0 = row*(decBins*ch+46)+30;
+    ctx.fillStyle="#9db8e0";
+    ctx.fillText(sg, 6, y0+12);
+    const rowData = {};
+    r.data.filter(d=>d.subgroup===sg).forEach(d=>rowData[d.tile]=d.status);
+    tiles.forEach((t,i)=>{
+      const dr = Math.floor(i/raBins), rr = i%raBins;
+      ctx.fillStyle = COLORS[rowData[t]] || "#141a29";
+      ctx.fillRect(90+rr*cw, y0+dr*ch, cw-1, ch-1);
+    });
+  });
+}
+
+loadStatus(); drawHeatmap();
+setInterval(()=>{loadStatus(); drawHeatmap();}, 30000);
+</script>
+</body>
+</html>

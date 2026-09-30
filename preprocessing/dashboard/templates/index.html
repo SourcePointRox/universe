@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>宇宙三维建模 · 数据前处理平台</title>
+<style>
+  body { font-family: "Microsoft YaHei", sans-serif; margin: 24px; background:#0f1420; color:#e6e9f0; }
+  h1 { font-size: 22px; color:#7ab3ff; }
+  h2 { font-size: 16px; color:#9db8e0; margin-top:28px; }
+  .card { background:#171e30; border:1px solid #2a3550; border-radius:10px; padding:16px; margin:12px 0; }
+  button { background:#2b6cb0; color:#fff; border:none; border-radius:6px; padding:8px 16px; cursor:pointer; margin-right:8px; }
+  button:hover { background:#3182ce; }
+  input[type=text] { background:#0d1220; color:#e6e9f0; border:1px solid #2a3550; border-radius:6px; padding:8px; width:420px; }
+  table { border-collapse: collapse; font-size: 13px; }
+  td, th { border:1px solid #2a3550; padding:4px 10px; }
+  canvas { background:#0d1220; border-radius:8px; }
+  .legend span { display:inline-block; width:12px; height:12px; border-radius:3px; margin:0 4px 0 12px; vertical-align:middle;}
+  #msg { color:#8fd18a; white-space:pre-wrap; font-size:13px; }
+</style>
+</head>
+<body>
+<h1>数据前处理平台 · 宇宙三维建模分布式计算</h1>
+
+<div class="card">
+  <h2>1. 数据库本地位置扫描</h2>
+  <input type="text" id="root" placeholder="输入数据库本地根目录，例如 D:\astro_data">
+  <button onclick="doScan()">扫描数据库</button>
+  <button onclick="loadStatus()">刷新状态</button>
+  <div id="status" style="margin-top:12px"></div>
+</div>
+
+<div class="card">
+  <h2>2. 计算任务生成 (→ HTCondor)</h2>
+  <button onclick="doGenerate()">生成任务与submit/DAG</button>
+  <button onclick="doSelfcheck()">自检自验</button>
+  <button onclick="doRegen()">重新生成错误任务</button>
+  <button onclick="doRedownload()">生成缺失数据下载清单</button>
+  <div id="msg" style="margin-top:12px"></div>
+</div>
+
+<div class="card">
+  <h2>3. 任务生成/执行进度热力图（子计算组 × 天区分片）</h2>
+  <div class="legend">
+    状态：<span style="background:#3a4560"></span>pending
+    <span style="background:#e6b93c"></span>running
+    <span style="background:#3fae5a"></span>done
+    <span style="background:#d05050"></span>error
+  </div>
+  <canvas id="heatmap" width="1100" height="420" style="margin-top:10px"></canvas>
+</div>
+
+<script>
+const COLORS = {pending:"#3a4560", running:"#e6b93c", done:"#3fae5a", error:"#d05050"};
+
+async function loadStatus() {
+  const r = await (await fetch("/api/status")).json();
+  let html = `<table><tr><th>数据库</th><th>文件数</th></tr>`;
+  for (const [k,v] of Object.entries(r.by_survey)) html += `<tr><td>${k}</td><td>${v}</td></tr>`;
+  html += `</table><p>任务状态: ${JSON.stringify(r.task_counts)} ｜ 数据根目录: ${r.data_root||"(未设置)"}</p>`;
+  document.getElementById("status").innerHTML = html;
+}
+
+async function doScan() {
+  const root = document.getElementById("root").value;
+  const r = await (await fetch("/api/scan", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({root})})).json();
+  document.getElementById("msg").textContent = r.ok ? `扫描完成: ${JSON.stringify(r.stats)}` : `错误: ${r.error}`;
+  loadStatus(); drawHeatmap();
+}
+
+async function doGenerate() {
+  const r = await (await fetch("/api/generate", {method:"POST"})).json();
+  document.getElementById("msg").textContent = `生成任务 ${r.n_tasks} 个，DAG: ${r.dag}`;
+  drawHeatmap(); loadStatus();
+}
+
+async function doSelfcheck() {
+  const r = await (await fetch("/api/selfcheck", {method:"POST"})).json();
+  document.getElementById("msg").textContent = `自检完成，发现 ${r.n_bad} 个问题任务\n` + r.bad.map(b=>`${b.id}: ${b.problems.join(";")}`).join("\n");
+  drawHeatmap();
+}
+
+async function doRegen() {
+  const r = await (await fetch("/api/regenerate", {method:"POST"})).json();
+  document.getElementById("msg").textContent = `重生成完成: ${JSON.stringify(r)}`;
+  drawHeatmap();
+}
+
+async function doRedownload() {
+  const r = await (await fetch("/api/redownload", {method:"POST"})).json();
+  document.getElementById("msg").textContent = `缺失数据库: ${r.missing.join(", ")}\n下载清单: ${r.manifest}`;
+}
+
+async function drawHeatmap() {
+  const r = await (await fetch("/api/heatmap")).json();
+  const cv = document.getElementById("heatmap"), ctx = cv.getContext("2d");
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const sgs = r.subgroups, tiles = r.tiles;
+  if (!sgs.length) { ctx.fillStyle="#8899bb"; ctx.font="14px sans-serif"; ctx.fillText("尚未生成任务", 20, 30); return; }
+  const decBins = 18, raBins = 36;
+  const cw = Math.min(20, (cv.width-140)/raBins), ch = Math.min(18, (cv.height-60)/decBins);
+  ctx.font = "12px sans-serif";
+  sgs.forEach((sg, row) => {
+    const y0 = row*(decBins*ch+46)+30;
+    ctx.fillStyle="#9db8e0";
+    ctx.fillText(sg, 6, y0+12);
+    const rowData = {};
+    r.data.filter(d=>d.subgroup===sg).forEach(d=>rowData[d.tile]=d.status);
+    tiles.forEach((t,i)=>{
+      const dr = Math.floor(i/raBins), rr = i%raBins;
+      ctx.fillStyle = COLORS[rowData[t]] || "#141a29";
+      ctx.fillRect(90+rr*cw, y0+dr*ch, cw-1, ch-1);
+    });
+  });
+}
+
+loadStatus(); drawHeatmap();
+setInterval(()=>{loadStatus(); drawHeatmap();}, 30000);
+</script>
+</body>
+</html>

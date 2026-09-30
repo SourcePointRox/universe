@@ -1,0 +1,91 @@
+{
+  "CG1": {
+    "desc": "银河系近场结构 (Gaia DR4 + 2MASS + WISE)",
+    "n_objects": 2800000000.0,
+    "per_tile": 648,
+    "SG1.1_coords": 140000000000.0,
+    "SG1.2_density": 280000000000.0,
+    "SG1.3_stream": 1757435662144.7642,
+    "total_flops": 2180235662144.7642
+  },
+  "CG2": {
+    "desc": "河外大尺度结构 (DESI+SDSS+Euclid)",
+    "n_objects": 1618700000.0,
+    "SG2.1_coords": 80935000000.0,
+    "SG2.2_density": 161870000000.0,
+    "SG2.3_twopcf": 1485587264975.8088,
+    "SG2.4_fof": 1237989387479.8406,
+    "total_flops": 2968000352455.6494
+  },
+  "CG3": {
+    "desc": "弱引力透镜质量图 (Euclid形状目录)",
+    "n_objects": 1500000000.0,
+    "SG3.1_catalog": 75000000000.0,
+    "SG3.2_ks": 18119393280.0,
+    "total_flops": 94619393280.0
+  },
+  "CG4": {
+    "desc": "瞬变与多信使 (TESS光变曲线 + LIGO事件)",
+    "n_objects": 50000000.0,
+    "SG4.1_bls": 500000000000000.0,
+    "SG4.2_gw": 77733117.42036429,
+    "total_flops": 500000127733117.44
+  },
+  "CG5": {
+    "desc": "模拟对比与半解析验证 (Millennium/TNG目录)",
+    "n_objects": 10000000000.0,
+    "SG5.1_hod": 500000000000.0,
+    "SG5.2_crossval": 597947057079.7252,
+    "total_flops": 1107947057079.725
+  },
+  "_TOTAL": {
+    "total_flops": 506350930198077.6,
+    "total_petaflops": 0.5063509301980776,
+    "total_exaflops": 0.0005063509301980777
+  },
+  "_TIME": {
+    "single_node_hours": 2.8130607233226534,
+    "pool_100node_hours": 0.028130607233226534,
+    "pool_100node_days": 0.0011721086347177723,
+    "pool_1000node_hours": 0.0028130607233226535
+  },
+  "_STORAGE": {
+    "raw_data_tb": 135674.0,
+    "catalog_tb": 13.951,
+    "intermediate_tb": 6.9755,
+    "total_recommended_tb": 34.8775
+  },
+  "_NETWORK": {
+    "per_task_input_mb": 10,
+    "per_task_output_mb": 1,
+    "total_input_tb": 0.0324,
+    "total_output_tb": 0.00324
+  },
+  "_HARDWARE": {
+    "min": {
+      "nodes": 10,
+      "cpu_cores_per_node": 32,
+      "ram_gb_per_node": 128,
+      "storage_tb": 5,
+      "network_gbps": 10,
+      "note": "最小可行配置: 仅处理DESI+SDSS目录级数据 (河外大尺度结构)"
+    },
+    "recommended": {
+      "nodes": 100,
+      "cpu_cores_per_node": 64,
+      "ram_gb_per_node": 256,
+      "storage_tb": 20,
+      "network_gbps": 25,
+      "note": "推荐配置: 全量巡天目录 + 模拟对比, ~3个月完成全部计算"
+    },
+    "ambitious": {
+      "nodes": 1000,
+      "cpu_cores_per_node": 64,
+      "ram_gb_per_node": 512,
+      "gpu_per_node": 2,
+      "storage_pb": 1,
+      "network_gbps": 100,
+      "note": "雄心配置: 含LSST未来数据 + 实时处理, ~2周完成"
+    }
+  }
+}
