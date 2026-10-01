@@ -1,0 +1,21 @@
+version: "3.8"
+# 单机演示编排：前处理仪表盘 + 后处理仪表盘
+# 生产集群请使用 Slurm/HTCondor + 共享文件系统（见 docs/architecture.md）
+services:
+  pre-dashboard:
+    build: .
+    entrypoint: ["python", "-m", "preprocessing.dashboard.app"]
+    command: ["--data-root", "/data/raw", "--workdir", "/work", "--db", "/work/state.sqlite"]
+    ports: ["8601:8601"]
+    volumes:
+      - ./data:/data
+      - ./work:/work
+
+  post-dashboard:
+    build: .
+    entrypoint: ["python", "-m", "postprocessing.dashboard.app"]
+    command: ["--results", "/results", "--db", "/work/state.sqlite"]
+    ports: ["8602:8602"]
+    volumes:
+      - ./results:/results
+      - ./work:/work

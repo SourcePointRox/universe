@@ -1,109 +1,124 @@
 # =============================================================
-# 计算组 -> 子计算组 -> 子计算任务 三级框架
-# 每个子计算任务按天区分片(tile)生成，tile = (ra_bin, dec_bin)
-# algorithm 字段对应 compute/algorithms 中的模块
-# requires.surveys 指定该任务需要哪些数据库的文件
+# 计算组 -> 子计算组 -> 子计算任务 三级框架（v2.0）
+# 目标：z<=0.15 全天局部宇宙（~1 Gpc^3）三维建模
+#
+# scope: pixel  -> 每 HEALPix 像素一个任务（I/O 只读本像素分区）
+# scope: global -> 全体积单任务（依赖上游全部 pixel 任务）
 # =============================================================
 
 sky_tiling:
-  ra_bins: 36        # 每10度一个赤经bin
-  dec_bins: 18       # 每10度一个赤纬bin
-  note: "等间距柱面分片，共648个tile；可平滑升级为HEALPix(nside=8)"
+  scheme: healpix-ring
+  healpix_nside: 16        # 3072 像素, ~13 deg²/像素
+  note: "HATS 式预分片（preprocessing/shard.py），替代旧的 36x18 柱面 tile"
 
 compute_groups:
 
   - id: CG1
-    name: 银河系近场结构
-    goal: 基于Gaia视差与红外巡天重建银盘/银晕三维恒星密度场与速度场
+    name: 星系三维位置重建
+    goal: 多巡天光谱红移 -> CMB 系共动坐标 + 距离不确定度（后验而非点估计）
     subgroups:
       - id: SG1.1
-        name: 恒星三维位置重建
-        algorithm: coords3d_parallax
-        requires: { surveys: [gaia, twomass, wise, panstarrs, sdss], columns: [ra, dec, parallax] }
-        output: stars3d
+        name: 红移距离重建（误差传播+CMB改正）
+        algorithm: coords3d_redshift
+        scope: pixel
+        requires:
+          surveys: [sdss, desi, gama, twomrs, sixdf]
+          columns: [ra, dec, z]
+        params: { z_column: z, z_max: 0.15, correct_cmb: true }
+        output: galaxies3d
       - id: SG1.2
-        name: 恒星密度场网格化
-        algorithm: density_cic
-        requires: { upstream: [SG1.1] }
-        output: density_grid
-      - id: SG1.3
-        name: 银晕潮汐流探测(参数优化占位)
-        algorithm: stream_likelihood
-        requires: { upstream: [SG1.1] }
-        output: stream_fit
+        name: Gaia 近场 Bayesian 视差距离
+        algorithm: coords3d_parallax
+        scope: pixel
+        requires:
+          surveys: [gaia]
+          columns: [ra, dec, parallax, parallax_error, phot_g_mean_mag]
+        params: { prior_L_kpc: 1.35, d_max_kpc: 3.0 }
+        output: stars3d
 
   - id: CG2
-    name: 河外大尺度结构
-    goal: 基于光谱红移巡天重建z<2宇宙三维物质分布
+    name: 三维物质密度场重建
+    goal: 带选择函数与偏置的 Wiener 滤波后验密度场（均值+不确定度）
     subgroups:
       - id: SG2.1
-        name: 红移-共动距离-三维坐标重建
-        algorithm: coords3d_redshift
-        requires: { surveys: [desi, sdss, euclid, decals], columns: [ra, dec, z] }
-        output: galaxies3d
+        name: Wiener 贝叶斯密度重建
+        algorithm: wiener_density
+        scope: global
+        requires: { upstream: [SG1.1] }
+        params:
+          box_min: [-650.0, -650.0, -650.0]
+          box_size: 1300.0
+          ngrid: 128
+          bias: 1.0
+        output: density_posterior
       - id: SG2.2
-        name: 三维密度场重建(CIC+KDTree)
+        name: CIC 密度场与功率谱（对照）
         algorithm: density_cic
-        requires: { upstream: [SG2.1] }
+        scope: global
+        requires: { upstream: [SG1.1] }
+        params: { ngrid: 128 }
         output: density_grid
-      - id: SG2.3
-        name: 两点相关函数与功率谱
-        algorithm: twopcf_power
-        requires: { upstream: [SG2.1] }
-        output: clustering
-      - id: SG2.4
-        name: 暗物质晕/星系团识别(FoF)
-        algorithm: fof_halos
-        requires: { upstream: [SG2.1] }
-        output: halo_catalog
 
   - id: CG3
-    name: 弱引力透镜质量图
-    goal: 用星系形状畸变反演投影物质分布
+    name: 大尺度结构聚类统计
+    goal: 带选择函数随机目录的 2PCF + 标准 b=0.2 FoF 晕/群目录
     subgroups:
       - id: SG3.1
-        name: 形状目录整理与校准
-        algorithm: shape_catalog
-        requires: { surveys: [euclid, mast, decals], columns: [ra, dec, e1, e2] }
-        output: shear_catalog
+        name: 两点相关函数（Landy-Szalay + 选择函数随机点）
+        algorithm: twopcf_power
+        scope: global
+        requires: { upstream: [SG1.1] }
+        params: { r_min: 0.5, r_max: 200.0, n_bins: 18, n_random_mult: 10 }
+        output: clustering
       - id: SG3.2
-        name: Kaiser-Squires质量图重建
-        algorithm: kaiser_squires
-        requires: { upstream: [SG3.1] }
-        output: mass_map
+        name: 星系团/群识别（FoF b=0.2）
+        algorithm: fof_halos
+        scope: global
+        requires: { upstream: [SG1.1] }
+        params: { b: 0.2, min_members: 5 }
+        output: group_catalog
 
   - id: CG4
-    name: 瞬变与多信使
-    goal: 光变曲线与引力波事件宿主的三维定位
+    name: 弱引力透镜质量图
+    goal: 形状目录 -> Kaiser-Squires 质量图（PSF/shape bias 处理见文档）
     subgroups:
       - id: SG4.1
-        name: 光变曲线周期/凌日检测
-        algorithm: lightcurve_bls
-        requires: { surveys: [tess, mast], columns: [time, flux] }
-        output: lc_features
+        name: 形状目录整理
+        algorithm: shape_catalog
+        scope: pixel
+        requires:
+          surveys: [euclid, mast, decals]
+          columns: [ra, dec, e1, e2]
+        output: shear_catalog
       - id: SG4.2
-        name: 引力波事件宿主星系匹配
-        algorithm: gw_host_match
-        requires: { surveys: [ligo], upstream: [SG2.1] }
-        output: gw_hosts
+        name: Kaiser-Squires 质量图重建
+        algorithm: kaiser_squires
+        scope: global
+        requires: { upstream: [SG4.1] }
+        params: { ngrid: 256 }
+        output: mass_map
 
   - id: CG5
-    name: 模拟对比与半解析验证
-    goal: 与千禧年/TNG模拟目录对比，校准重建偏差
+    name: N-body 模拟验证
+    goal: 同体积 PM 宇宙学模拟，与重建场交叉校验（方法学验证）
     subgroups:
       - id: SG5.1
-        name: Mock目录生成(HOD)
-        algorithm: hod_mock
-        requires: { surveys: [millennium] }
-        output: mock_catalog
+        name: PM 宇宙学模拟（Zel'dovich IC + KDK）
+        algorithm: nbody_pm
+        scope: global
+        params: { ngrid: 128, boxsize: 1300.0, z_init: 49.0, n_steps: 60, seed: 42 }
+        output: sim_snapshot
       - id: SG5.2
         name: 重建-模拟交叉校验
         algorithm: cross_validate
-        requires: { upstream: [SG5.1, SG2.2] }
+        scope: global
+        requires: { upstream: [SG5.1, SG2.1] }
         output: validation_report
 
-# 单个任务资源请求（写入HTCondor submit文件）
+# 单任务资源请求（写入 HTCondor submit / Slurm 模板）
 resources:
-  request_cpus: 2
-  request_memory: 4GB
+  request_cpus: 4
+  request_memory: 8GB
   request_disk: 10GB
+  # global 任务（Wiener/N-body 128³）实际峰值见 scripts/estimate_scale.py:
+  # ~6-16 GB RAM, 1-3 核时级

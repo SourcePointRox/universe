@@ -222,3 +222,79 @@ surveys:
       api: "TNG API (需key)"
     relevance: 高 # 模拟对比与半解析验证
     compute_groups: [CG5]
+
+  # ============ v2.0 局部宇宙核心数据源 ============
+  - id: twomrs
+    name: 2MRS (2MASS Redshift Survey)
+    agency: CfA
+    home: https://irsa.ipac.caltech.edu/
+    total_size: "目录 <100 MB"
+    data_products: [全天 K<11.75 星系光谱红移 ~43k]
+    formats: [fits, csv, tbl]
+    file_patterns: ["*2mrs*", "*twomrs*"]
+    header_keywords: ["2MRS", "2MASS"]
+    download:
+      bulk: https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-scan
+      api: "IRSA Gator/TAP"
+    relevance: 极高 # 局部宇宙全天完备样本骨干
+    compute_groups: [CG1]
+
+  - id: gama
+    name: GAMA DR4
+    agency: GAMA Collaboration
+    home: http://www.gama-survey.org/
+    total_size: "目录 ~GB 级"
+    data_products: [~300k 星系光谱红移(5个深场), 环境/群目录]
+    formats: [fits, csv]
+    file_patterns: ["gama*", "*GAMA*"]
+    header_keywords: ["GAMA"]
+    download:
+      bulk: http://www.gama-survey.org/dr4/
+      api: "GAMA DR4 查询接口"
+    relevance: 高
+    compute_groups: [CG1]
+
+  - id: sixdf
+    name: 6dFGS
+    agency: AAO
+    home: https://www.6dfgsurvey.net/
+    total_size: "目录 <100 MB"
+    data_products: [南天 ~125k 星系红移, 特殊速度子样本]
+    formats: [fits, csv]
+    file_patterns: ["*6df*", "*6dFGS*"]
+    header_keywords: ["6DF", "6DFGS"]
+    download:
+      bulk: https://www.6dfgsurvey.net/
+      api: "6dFGS 数据库"
+    relevance: 高 # 填补 SDSS 南天空缺
+    compute_groups: [CG1]
+
+  - id: alfalfa
+    name: ALFALFA
+    agency: Cornell/Arecibo
+    home: https://egg.astro.cornell.edu/alfalfa/
+    total_size: "目录 <100 MB"
+    data_products: [~31k HI 源红移与 HI 质量]
+    formats: [fits, csv, tbl]
+    file_patterns: ["alfalfa*", "*a100*"]
+    header_keywords: ["ALFALFA"]
+    download:
+      bulk: https://egg.astro.cornell.edu/alfalfa/data/
+      api: "ALFALFA 目录页"
+    relevance: 中 # 气体丰度补充示踪
+    compute_groups: [CG1]
+
+  - id: cosmicflows
+    name: Cosmicflows-4
+    agency: IP2I/CEA
+    home: http://cosmicflows.iap.fr/
+    total_size: "目录 <100 MB"
+    data_products: [~56k 星系距离与特殊速度, 1k SNIa]
+    formats: [fits, csv, ecsv]
+    file_patterns: ["*cf4*", "*cosmicflows*", "*CF4*"]
+    header_keywords: ["COSMICFLOWS"]
+    download:
+      bulk: https://projets.ip2i.in2p3.fr/cosmicflows/
+      api: "Cosmicflows 数据页"
+    relevance: 极高 # 特殊速度改正与独立距离校验
+    compute_groups: [CG1, CG2]

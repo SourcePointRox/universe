@@ -112,6 +112,32 @@ def api_tasks():
     return jsonify({"tasks": tasks[:2000], "total": len(tasks)})
 
 
+@app.route("/metrics")
+def metrics():
+    """Prometheus 文本格式指标端点：任务状态计数/完成率/僵尸任务数。"""
+    import time
+    db = get_db()
+    counts = db.status_counts()
+    lines = ["# HELP universe_tasks 任务状态计数",
+             "# TYPE universe_tasks gauge"]
+    total = 0
+    for st, n in sorted(counts.items()):
+        lines.append(f'universe_tasks{{status="{st}"}} {n}')
+        total += n
+    done = counts.get("done", 0)
+    lines += ["# HELP universe_tasks_total 任务总数",
+              "# TYPE universe_tasks_total gauge",
+              f"universe_tasks_total {total}",
+              "# HELP universe_completion_ratio 完成率",
+              "# TYPE universe_completion_ratio gauge",
+              f"universe_completion_ratio {(done/total if total else 0):.4f}"]
+    stale = len(db.stale_tasks())
+    lines += ["# HELP universe_stale_tasks 心跳超时任务数",
+              "# TYPE universe_stale_tasks gauge",
+              f"universe_stale_tasks {stale}"]
+    return "\n".join(lines) + "\n", 200, {"Content-Type": "text/plain; charset=utf-8"}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--results", default="results")

@@ -1,0 +1,26 @@
+Bootstrap: docker
+From: python:3.11-slim
+
+%labels
+    Title universe
+    Description Local Universe (z<=0.15) 3D modeling pipeline
+
+%environment
+    export PYTHONUNBUFFERED=1
+    export UNIVERSE_LOG_DIR=/work/logs
+
+%post
+    pip install --no-cache-dir numpy scipy astropy numba pyarrow h5py \
+        pyyaml flask matplotlib reportlab
+    mkdir -p /data /work /results
+
+%files
+    . /app
+
+%runscript
+    cd /app && exec python -m compute.worker "$@"
+
+# HPC 使用:
+#   singularity build universe.sif Singularity.def
+#   singularity run --bind /lustre/data:/data,/lustre/work:/work \
+#       universe.sif SG1.1__hp000123 --workdir /work --results /results

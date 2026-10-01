@@ -8,6 +8,12 @@ venv/
 
 # 中间工作产物
 test_work/
+test_work_v2*/
+work/
+results/
+data/
+logs/
+demo_out/
 demo_out/
 work/
 results/

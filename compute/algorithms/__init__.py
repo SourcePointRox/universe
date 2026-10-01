@@ -100,25 +100,36 @@ def power_spectrum(delta, box_size, kmax=None, nbins=20):
     return kmean, pk
 
 
-def twopcf(pos, r_edges, box_size=None, n_random=None, seed=42):
+def twopcf(pos, r_edges, box_size=None, n_random=None, seed=42, randoms=None):
     """Landy-Szalay 估计量 xi(r) = (DD - 2DR + RR)/RR。
-    使用 cKDTree.count_neighbors 计数，O(N log N)，可处理百万级天体。"""
+
+    关键改进（问题清单 #11）：随机目录必须忠实反映巡天选择函数，
+    否则 xi 在小尺度和大尺度都有系统偏差。
+    - 优先使用调用方提供的 randoms（由 random_catalog_from_selection 生成）
+    - 无 randoms 时退回 bounding box 均匀随机（仅适合完备体积限样本，
+      并在文档中明确其局限）
+    使用 cKDTree.count_neighbors 计数，O(N log N)，可处理百万级天体。
+    """
     from scipy.spatial import cKDTree
 
     pos = np.asarray(pos, dtype=float)
-    rng = np.random.default_rng(seed)
     n = len(pos)
-    if box_size is None:
-        lo, hi = pos.min(axis=0), pos.max(axis=0)
-        box_size = hi - lo
+    if randoms is not None:
+        rand = np.asarray(randoms, dtype=float)
     else:
-        lo = pos.min(axis=0)
-        box_size = np.atleast_1d(box_size).astype(float)
-        if box_size.size == 1:
-            box_size = np.repeat(box_size, 3)
-    if n_random is None:
-        n_random = max(5 * n, 2000)
-    rand = rng.uniform(lo, lo + box_size, size=(n_random, 3))
+        rng = np.random.default_rng(seed)
+        if box_size is None:
+            lo, hi = pos.min(axis=0), pos.max(axis=0)
+            box_size = hi - lo
+        else:
+            lo = pos.min(axis=0)
+            box_size = np.atleast_1d(box_size).astype(float)
+            if box_size.size == 1:
+                box_size = np.repeat(box_size, 3)
+        if n_random is None:
+            n_random = max(5 * n, 2000)
+        rand = rng.uniform(lo, lo + box_size, size=(n_random, 3))
+    n_random = len(rand)
 
     t_data = cKDTree(pos)
     t_rand = cKDTree(rand)
@@ -133,35 +144,80 @@ def twopcf(pos, r_edges, box_size=None, n_random=None, seed=42):
     return rcen, xi
 
 
-def fof_halos(pos, linking_length, min_members=5):
-    """简化FoF：基于scipy KDTree 的连通分量标记。返回每个点的group id(-1为未成团)。"""
+def random_catalog_from_selection(data_pos, n_random=None, n_rbins=64, seed=42,
+                                  observer=(0.0, 0.0, 0.0)):
+    """按巡天径向选择函数生成随机目录（2PCF/聚类统计必需）。
+
+    方法：保持数据的角向分布，径向按平滑后的 n(r) 重采样——
+    这是无显式 mask 时的标准做法（体积限样本的实用近似；
+    有官方 randoms 的巡天如 SDSS/eBOSS 应直接读入）。
+    """
+    rng = np.random.default_rng(seed)
+    data_pos = np.asarray(data_pos, dtype=float)
+    n = len(data_pos)
+    if n_random is None:
+        n_random = 10 * n
+    obs = np.asarray(observer, dtype=float)
+    r = np.linalg.norm(data_pos - obs, axis=1)
+    # 平滑径向分布 -> 反变换采样
+    counts, edges = np.histogram(r, bins=n_rbins)
+    cdf = np.concatenate([[0.0], np.cumsum(counts) / counts.sum()])
+    u = rng.uniform(0, 1, n_random)
+    r_s = np.interp(u, cdf, edges)
+    # 角向：从数据随机抽取方向
+    dirs = data_pos[rng.integers(0, n, n_random)] - obs
+    dirs /= np.linalg.norm(dirs, axis=1, keepdims=True)
+    return obs + dirs * r_s[:, None]
+
+
+def fof_halos(pos, linking_length=None, min_members=5, b=0.2):
+    """Friends-of-Friends 成团（KDTree + 并查集）。
+
+    链长标准定义（Davis et al. 1985）：b × n̄^(-1/3)，即平均粒子间距的
+    b 倍，b=0.2 对应过密度 ~200 的晕边界。旧的"坐标范围/50"是任意设定，
+    会导致链长随样本大小和区域漂移。显式传 linking_length 优先。
+    返回每个点的 group id(-1为未成团) 与 {gid: size}。
+    """
     from scipy.spatial import cKDTree
 
     pos = np.asarray(pos, dtype=float)
+    n = len(pos)
+    if linking_length is None:
+        vol = float(np.prod(np.ptp(pos, axis=0)))
+        nbar = n / max(vol, 1e-30)
+        linking_length = b * nbar ** (-1.0 / 3.0)
     tree = cKDTree(pos)
     pairs = tree.query_pairs(linking_length, output_type="ndarray")
-    labels = -np.ones(len(pos), dtype=int)
+    labels = -np.ones(n, dtype=int)
     if len(pairs) == 0:
         return labels, {}
-    # union-find
-    parent = np.arange(len(pos))
+    # union-find（路径压缩 + 按秩合并，向量化根查找）
+    parent = np.arange(n)
+    rank = np.zeros(n, dtype=int)
 
     def find(a):
-        while parent[a] != a:
-            parent[a] = parent[parent[a]]
-            a = parent[a]
-        return a
+        root = a
+        while parent[root] != root:
+            root = parent[root]
+        while parent[a] != root:
+            parent[a], a = root, parent[a]
+        return root
 
-    for a, b in pairs:
-        ra, rb = find(a), find(b)
+    for a_, b_ in pairs:
+        ra, rb = find(int(a_)), find(int(b_))
         if ra != rb:
-            parent[ra] = rb
-    roots = np.array([find(i) for i in np.unique(pairs.ravel())])
-    uniq, counts = np.unique(roots, return_counts=True)
+            if rank[ra] < rank[rb]:
+                ra, rb = rb, ra
+            parent[rb] = ra
+            if rank[ra] == rank[rb]:
+                rank[ra] += 1
+    involved = np.unique(pairs.ravel())
+    roots = np.array([find(i) for i in involved])
+    uniq_roots, inverse = np.unique(roots, return_inverse=True)
+    member_lists = [involved[inverse == j] for j in range(len(uniq_roots))]
     sizes = {}
     gid = 0
-    for root, _c in zip(uniq, counts):
-        members = np.where(np.array([find(i) for i in range(len(pos))]) == root)[0]
+    for members in member_lists:
         if len(members) >= min_members:
             labels[members] = gid
             sizes[gid] = len(members)

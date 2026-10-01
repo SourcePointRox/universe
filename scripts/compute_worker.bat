@@ -14,7 +14,7 @@ if not exist "%PYTHON%" (
 )
 
 cd /d "%PROJECT%"
-"%PYTHON%" -m compute.worker %1 --config configs/compute_groups.yaml --workdir work --results results
+"%PYTHON%" -m compute.worker %1 --workdir work --results results
 
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] worker 退出码: %ERRORLEVEL%

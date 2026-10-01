@@ -1,0 +1,140 @@
+{
+  "_meta": {
+    "target": "z<=0.15 全天局部宇宙 (~1.1 Gpc^3)",
+    "version": "v2.0",
+    "n_galaxies": 3920000.0,
+    "n_stars_gaia": 10000000.0
+  },
+  "input_data": {
+    "surveys": {
+      "sdss": {
+        "objects": 700000.0,
+        "gb": 3.0,
+        "ref": "SDSS DR18 spAll/SpecObjAll"
+      },
+      "desi": {
+        "objects": 2800000.0,
+        "gb": 8.0,
+        "ref": "DESI DR1 zcatalog (BGS_BRIGHT)"
+      },
+      "twomrs": {
+        "objects": 43000.0,
+        "gb": 0.1,
+        "ref": "2MRS final catalog"
+      },
+      "gama": {
+        "objects": 180000.0,
+        "gb": 1.0,
+        "ref": "GAMA DR4 SpecCat"
+      },
+      "sixdf": {
+        "objects": 110000.0,
+        "gb": 0.2,
+        "ref": "6dFGS DR3"
+      },
+      "alfalfa": {
+        "objects": 31000.0,
+        "gb": 0.05,
+        "ref": "ALFALFA a.100"
+      },
+      "cosmicflows": {
+        "objects": 56000.0,
+        "gb": 0.1,
+        "ref": "CF4 grouped catalog"
+      },
+      "gaia": {
+        "objects": 10000000.0,
+        "gb": 6.0,
+        "ref": "Gaia DR3 gaia_source 子集"
+      }
+    },
+    "raw_total_gb": 18.45,
+    "shards_gb": 10.1475,
+    "total_budget_gb": 43.5975,
+    "note": "总存储 ~60 GB, 符合 80 GB 本地开发约束"
+  },
+  "flops_by_group": {
+    "CG1_redshift": {
+      "n": 3920000.0,
+      "flops": 4704000000.0,
+      "note": "spec-z 距离+误差传播+CMB改正, ~1.2e3 FLOP/天体"
+    },
+    "CG1_parallax": {
+      "n": 10000000.0,
+      "flops": 330000000000.0,
+      "note": "Bayesian 距离后验, 网格 2200 点 x 15 FLOP"
+    },
+    "CG2_wiener": {
+      "n": 3920000.0,
+      "flops": 759488000.0,
+      "note": "Wiener 滤波全局任务, 128^3 网格"
+    },
+    "CG3_twopcf": {
+      "n": 3920000.0,
+      "flops": 644791216562.4028,
+      "note": "Landy-Szalay + 10x 随机目录, cKDTree"
+    },
+    "CG3_fof": {
+      "n": 3920000.0,
+      "flops": 2342437377.919136,
+      "note": "FoF b=0.2, query_pairs + 并查集"
+    },
+    "CG5_nbody": {
+      "n": 2097152,
+      "flops": 71722598400.0,
+      "note": "PM 求解器 128^3 粒子 60 步 (校验模拟, 非生产模拟)"
+    }
+  },
+  "total": {
+    "flops": 1057103740340.322,
+    "tflops": 1.057103740340322,
+    "note": "对比旧估算的 0.5 PFLOPs: 旧值把不可得的 5.9e9 天体当输入,真实可得输入 ~4e6 星系, 差约 3 个量级"
+  },
+  "rates": {
+    "throughput": {
+      "shard_rows_per_s": 50000.0,
+      "redshift_obj_per_s": 3000.0,
+      "parallax_obj_per_s": 1000.0
+    },
+    "cpu_s_per_object": {
+      "shard_rows_per_s": 2e-05,
+      "redshift_obj_per_s": 0.0003333333333333333,
+      "parallax_obj_per_s": 0.001
+    }
+  },
+  "memory_gb_per_task": {
+    "pixel_task_gb": 2.0,
+    "global_wiener_gb": 8.0,
+    "global_2pcf_gb": 4.0,
+    "nbody_128_gb": 6.0
+  },
+  "io": {
+    "shard_partition_mb_avg": 3.30322265625,
+    "pixel_task_input_mb": 9.90966796875,
+    "global_task_input_gb": 5.534999999999999,
+    "total_task_io_gb": 40.59
+  },
+  "network": {
+    "shuffle_gb": 10.1475,
+    "distribute_gb": 30.1475,
+    "per_day_tb": 0.00301475
+  },
+  "timeline": {
+    "single_workstation_16core": {
+      "cores": 16,
+      "days": 3.823436560837391e-05,
+      "note": "单机即可完成全部计算（含 N-body 校验模拟）"
+    },
+    "small_cluster_8node": {
+      "cores": 256,
+      "days": 2.3896478505233695e-06,
+      "note": "8 节点 x 32 核, 主要瓶颈是 global 任务串行段"
+    }
+  },
+  "wall_clock_summary": {
+    "分片(一次性)": "0.1 核时",
+    "CG1 位置重建": "0.4 核时",
+    "CG5 N-body 校验": "0.0 核时",
+    "全项目(单机16核)": "0.0 天"
+  }
+}

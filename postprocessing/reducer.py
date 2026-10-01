@@ -11,7 +11,7 @@ from common.db import DB
 from compute import algorithms as A
 
 
-def _load_xyz_from_results(db: DB, subgroups=("SG1.1", "SG2.1")):
+def _load_xyz_from_results(db: DB, subgroups=("SG1.1", "SG1.2")):
     xyz_list, src = [], {"galaxies_mpc": 0, "stars_kpc": 0}
     for r in db.results():
         if r["subgroup"] not in subgroups or r["status"] != "verified":
@@ -59,7 +59,7 @@ def merge_clustering(db: DB, out_h5):
     ensure_dir(Path(out_h5).parent)
     xi_list, r_ref = [], None
     for r in db.results():
-        if r["subgroup"] != "SG2.3" or r["status"] != "verified":
+        if r["subgroup"] != "SG3.1" or r["status"] != "verified":
             continue
         with h5py.File(r["path"], "r") as h:
             if "xi" in h and "r_mpc" in h:
@@ -80,7 +80,7 @@ def merge_halo_catalog(db: DB, out_csv):
     ensure_dir(Path(out_csv).parent)
     rows = []
     for r in db.results():
-        if r["subgroup"] != "SG2.4" or r["status"] != "verified":
+        if r["subgroup"] != "SG3.2" or r["status"] != "verified":
             continue
         with h5py.File(r["path"], "r") as h:
             if "xyz" in h and "group" in h:

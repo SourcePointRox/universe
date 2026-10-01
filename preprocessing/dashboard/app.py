@@ -1,8 +1,8 @@
 """数据前处理平台 Web 仪表盘。
 
 功能：
-- 设定数据库本地根目录并触发扫描
-- 查看扫描文件统计与数据库覆盖情况
+- 查看 HEALPix 预分片（Parquet 分区）覆盖情况（/api/shards）
+- 设定数据库本地根目录并触发原始目录扫描（v1 兼容流程，新管线以分片为准）
 - 生成计算任务与 HTCondor submit/DAG 文件
 - 热力图展示任务生成/执行进度 (subgroup × tile)
 - 自检自验：错误任务重新生成；缺失数据库生成补全下载清单
@@ -16,7 +16,6 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request
 
 from common.db import DB
-from common.tiling import all_tiles, load_tiling
 from preprocessing.scanner import scan_directory
 from preprocessing.selfcheck import (redownload_manifest, regenerate_errors,
                                      validate_tasks)
@@ -30,6 +29,27 @@ STATE = {}
 
 def get_db():
     return DB(STATE["db"])
+
+
+def _shard_summaries():
+    """读取 data/shards 下各巡天的 _metadata.json，返回分片覆盖摘要。"""
+    root = Path(STATE.get("shards_root") or (ROOT / "data" / "shards"))
+    out = []
+    if not root.exists():
+        return out
+    for meta_path in sorted(root.glob("*/_metadata.json")):
+        try:
+            m = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        out.append({
+            "survey": m.get("survey", meta_path.parent.name),
+            "nside": m.get("nside"),
+            "n_partitions": m.get("n_partitions"),
+            "n_rows": m.get("n_rows"),
+            "columns": m.get("columns", []),
+        })
+    return out
 
 
 @app.route("/")
@@ -49,7 +69,14 @@ def api_status():
         "by_survey": by_survey,
         "task_counts": db.status_counts(),
         "data_root": STATE.get("data_root", ""),
+        "shards": _shard_summaries(),
     })
+
+
+@app.route("/api/shards")
+def api_shards():
+    """HEALPix 预分片覆盖情况（新管线的数据源真相，替代旧目录扫描）。"""
+    return jsonify({"shards": _shard_summaries()})
 
 
 @app.route("/api/scan", methods=["POST"])
@@ -73,11 +100,12 @@ def api_generate():
 
 @app.route("/api/heatmap")
 def api_heatmap():
+    """热力图数据：tile 轴直接取任务表中的 HEALPix tile_id（hpXXXXXX/global），
+    与 v2.0 分片管线一致，不再依赖旧柱面 tile 配置。"""
     db = get_db()
-    ra_bins, dec_bins = load_tiling(ROOT / "configs" / "compute_groups.yaml")
-    tiles = all_tiles(ra_bins, dec_bins)
     matrix = db.progress_matrix()
     subgroups = sorted(matrix.keys())
+    tiles = sorted({tile for sg in matrix.values() for tile in sg})
     data = []
     for sg in subgroups:
         for tile in tiles:
@@ -117,6 +145,32 @@ def api_redownload():
     out = Path(STATE["workdir"]) / "redownload_manifest.md"
     missing = redownload_manifest(db, ROOT / "configs" / "surveys.yaml", out)
     return jsonify({"ok": True, "missing": missing, "manifest": str(out)})
+
+
+@app.route("/metrics")
+def metrics():
+    """Prometheus 文本格式指标端点：任务状态计数/完成率/僵尸任务数。"""
+    import time
+    db = get_db()
+    counts = db.status_counts()
+    lines = ["# HELP universe_tasks 任务状态计数",
+             "# TYPE universe_tasks gauge"]
+    total = 0
+    for st, n in sorted(counts.items()):
+        lines.append(f'universe_tasks{{status="{st}"}} {n}')
+        total += n
+    done = counts.get("done", 0)
+    lines += ["# HELP universe_tasks_total 任务总数",
+              "# TYPE universe_tasks_total gauge",
+              f"universe_tasks_total {total}",
+              "# HELP universe_completion_ratio 完成率",
+              "# TYPE universe_completion_ratio gauge",
+              f"universe_completion_ratio {(done/total if total else 0):.4f}"]
+    stale = len(db.stale_tasks())
+    lines += ["# HELP universe_stale_tasks 心跳超时任务数",
+              "# TYPE universe_stale_tasks gauge",
+              f"universe_stale_tasks {stale}"]
+    return "\n".join(lines) + "\n", 200, {"Content-Type": "text/plain; charset=utf-8"}
 
 
 def main():

@@ -15,4 +15,4 @@ if [ ! -f "$PYTHON" ]; then
 fi
 
 cd "$PROJECT"
-"$PYTHON" -m compute.worker "$1" --config configs/compute_groups.yaml --workdir work --results results
+"$PYTHON" -m compute.worker "$1" --workdir work --results results

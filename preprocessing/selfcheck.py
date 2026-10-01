@@ -39,6 +39,15 @@ def validate_tasks(db: DB):
         spec_path = Path(t["submit_path"]).parent / "task.json" if t.get("submit_path") else None
         if not (spec_path and spec_path.exists()):
             problems.append("任务规格文件丢失(task.json)")
+        elif spec_path.exists():
+            # v2.0: 校验分片输入
+            try:
+                spec = json.loads(spec_path.read_text(encoding="utf-8"))
+                for sh in spec.get("shards", []):
+                    if not Path(sh["path"]).exists():
+                        problems.append(f"分片缺失: {sh['path']}")
+            except json.JSONDecodeError:
+                problems.append("任务规格文件损坏(task.json)")
         if t.get("submit_path") and not Path(t["submit_path"]).exists():
             problems.append("HTCondor提交文件丢失(task.sub)")
         if problems:

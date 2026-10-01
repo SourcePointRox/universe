@@ -1,5 +1,10 @@
 # HTCondor 部署指南
 
+> ⚠️ **v2.0 注记（2026-10-01）**：本文为 v1 时代 HTCondor 部署指南，核心流程仍有效，
+> 但任务体系已改为 HEALPix pixel/global 两级（见 `preprocessing/taskgen.py` 自动生成的
+> DAG，含 RETRY 与 afterok 依赖）；Slurm 用户请改用 `deploy/slurm_*.sbatch`。
+> 架构总览见 `docs/architecture.md`。
+
 ## 1. 安装 HTCondor
 
 在提交节点（运行仪表盘的服务器）和所有计算节点上安装 HTCondor：

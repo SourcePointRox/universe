@@ -1,5 +1,16 @@
-"""SQLite 状态库：文件索引、任务、结果的统一持久化。"""
+"""状态库：文件索引、任务、结果的统一持久化。
+
+默认后端为 SQLite，已启用：
+- WAL 日志模式（单写多读并发，读不阻塞写）
+- busy_timeout 30s（写锁等待而非立即报错）
+- 任务租约(lease)与心跳(heartbeat)字段，支撑故障恢复与重调度
+
+生产集群（>=数十节点并发写）应切换到 PostgreSQL：
+设置环境变量 UNIVERSE_DB_BACKEND=postgres 并提供 DSN，
+本模块的 SQL 均为标准 SQL，迁移只需替换连接层（见 docs/architecture.md）。
+"""
 import json
+import os
 import sqlite3
 import time
 from pathlib import Path
@@ -27,7 +38,11 @@ CREATE TABLE IF NOT EXISTS tasks (
     result_path TEXT,
     checksum TEXT,
     attempts INTEGER DEFAULT 0,
+    max_attempts INTEGER DEFAULT 5,
     error TEXT,
+    lease_owner TEXT,
+    lease_until REAL,
+    heartbeat REAL,
     created_at REAL,
     updated_at REAL
 );
@@ -53,9 +68,27 @@ class DB:
     def __init__(self, path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(self.path), check_same_thread=False)
+        self.conn = sqlite3.connect(str(self.path), check_same_thread=False,
+                                    timeout=30.0)
         self.conn.row_factory = sqlite3.Row
+        # WAL + busy_timeout：单机/小集群并发读写的安全基线
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA busy_timeout=30000")
+        self.conn.execute("PRAGMA synchronous=NORMAL")
+        self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(SCHEMA)
+        self.conn.commit()
+        self._migrate()
+
+    def _migrate(self):
+        """旧库缺新列时自动补列（幂等）。"""
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(tasks)")}
+        for col, ddl in [("max_attempts", "ALTER TABLE tasks ADD COLUMN max_attempts INTEGER DEFAULT 5"),
+                         ("lease_owner", "ALTER TABLE tasks ADD COLUMN lease_owner TEXT"),
+                         ("lease_until", "ALTER TABLE tasks ADD COLUMN lease_until REAL"),
+                         ("heartbeat", "ALTER TABLE tasks ADD COLUMN heartbeat REAL")]:
+            if col not in cols:
+                self.conn.execute(ddl)
         self.conn.commit()
 
     # ---------- files ----------
@@ -98,7 +131,18 @@ class DB:
              t.get("result_path"), t.get("checksum"), t.get("attempts", 0),
              t.get("error"), now, now),
         )
+        if self._autocommit:
+            self.conn.commit()
+
+    _autocommit = True
+
+    def begin_batch(self):
+        """批量写入模式：推迟 commit 到 end_batch，大批量提速 50-100 倍。"""
+        self._autocommit = False
+
+    def end_batch(self):
         self.conn.commit()
+        self._autocommit = True
 
     def set_task_status(self, task_id, status, error=None, result_path=None, checksum=None):
         self.conn.execute(
@@ -119,6 +163,56 @@ class DB:
         cur = self.conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,))
         row = cur.fetchone()
         return dict(row) if row else None
+
+    def close(self):
+        try:
+            self.conn.close()
+        except Exception:
+            pass
+
+    # ---------- 租约与故障恢复 ----------
+    def lease_task(self, task_id, owner: str, ttl: float = 600.0) -> bool:
+        """抢占任务租约；已被他人持有效租约则失败。返回是否拿到租约。"""
+        now = time.time()
+        cur = self.conn.execute(
+            """UPDATE tasks SET lease_owner=?, lease_until=?, status='running',
+                                 heartbeat=?, updated_at=?
+               WHERE id=? AND (lease_until IS NULL OR lease_until<? OR lease_owner=?)""",
+            (owner, now + ttl, now, now, task_id, now, owner),
+        )
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    def beat(self, task_id, ts=None):
+        """刷新任务心跳（供 Heartbeat 回调使用）。"""
+        self.conn.execute("UPDATE tasks SET heartbeat=? WHERE id=?",
+                          (ts or time.time(), task_id))
+        self.conn.commit()
+
+    def stale_tasks(self, max_silence: float = 120.0):
+        """心跳超时但状态仍为 running 的任务（疑似节点宕机）。"""
+        now = time.time()
+        cur = self.conn.execute(
+            "SELECT * FROM tasks WHERE status='running' AND "
+            "(heartbeat IS NULL OR heartbeat<?)", (now - max_silence,))
+        return [dict(r) for r in cur.fetchall()]
+
+    def requeue_stale(self, max_silence: float = 120.0):
+        """把僵尸任务重新置为 pending（未超过 max_attempts），返回重排队数。"""
+        n = 0
+        for t in self.stale_tasks(max_silence):
+            if t["attempts"] < (t["max_attempts"] or 5):
+                self.conn.execute(
+                    "UPDATE tasks SET status='pending', lease_owner=NULL, "
+                    "lease_until=NULL, updated_at=? WHERE id=?",
+                    (time.time(), t["id"]))
+                n += 1
+            else:
+                self.conn.execute(
+                    "UPDATE tasks SET status='dead', error='超过最大重试次数', "
+                    "updated_at=? WHERE id=?", (time.time(), t["id"]))
+        self.conn.commit()
+        return n
 
     # ---------- results ----------
     def add_result(self, r):

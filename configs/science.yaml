@@ -1,0 +1,53 @@
+# =============================================================
+# 科学目标定义：1 Gpc³ 局部宇宙高精度三维建模（v2.0）
+# =============================================================
+target:
+  name: "Local Universe z<=0.15 full-sky"
+  description: >
+    全天 4π 立体角、红移 z <= 0.15 的局部宇宙体积。
+    Planck18 下 z=0.15 对应共动距离约 650 Mpc，
+    体积 V = 4π/3 * (650 Mpc)^3 ≈ 1.1e9 Mpc^3 ≈ 1 Gpc^3。
+    选择依据见 docs/literature_review.md 第 1.2 节。
+  z_max: 0.15
+  comoving_radius_mpc: 650.0
+  volume_mpc3: 1.15e9
+
+cosmology:
+  name: Planck18
+  H0: 67.66
+  Om0: 0.3111
+  Ob0: 0.0490
+  sigma8: 0.8102
+  ns: 0.9665
+
+# 距离推断参数（compute/algorithms/distance.py）
+distance:
+  gaia_zeropoint: lindegren21_simplified   # 官方表接口预留
+  parallax_prior_L_kpc: 1.35               # Bailer-Jones 2015 薄盘标长
+  correct_cmb_dipole: true                 # 局部宇宙必须
+  spec_z_sigma_kms: 30.0                   # 典型 spec-z 速度误差
+
+# 密度场重建参数（compute/algorithms/reconstruction.py）
+reconstruction:
+  method: wiener_filter
+  box_min_mpc: [-650.0, -650.0, -650.0]
+  box_size_mpc: 1300.0
+  ngrid: 128                               # 10 Mpc/cell
+  bias: 1.0                                # 体积限星系样本近似无偏
+
+# N-body 验证模拟参数（compute/algorithms/nbody.py）
+nbody:
+  boxsize_mpc: 1300.0
+  ngrid: 128                               # 128³ = 2.1e6 粒子, 单节点小时级
+  z_init: 49.0
+  n_steps: 60
+  note: >
+    用于方法学验证与重建场对比（原 CG5）。
+    与 Millennium (2160³, 超算) 的规模差异在 README 中如实声明。
+
+# 存储与算力预算（与 scripts/estimate_scale.py 输出自洽）
+budget:
+  raw_catalog_gb: 30        # 全部输入目录（裁切后）
+  shards_gb: 15             # 预分片 Parquet（ZSTD）
+  intermediate_gb: 10
+  total_gb: 60              # 远低于 80 GB 本地开发限额
